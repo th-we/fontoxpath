@@ -1,7 +1,10 @@
+import { ConcreteNode } from 'src/domFacade/ConcreteNode';
+import { ValidValue, ValidValueSequence } from 'src/types/TypedValueFactory';
 import { NodePointer } from '../domClone/Pointer';
 import DomFacade from '../domFacade/DomFacade';
+import IDomFacade from '../domFacade/IDomFacade';
 import ArrayValue from './dataTypes/ArrayValue';
-import dataTypeValidatorByName, { getValidatorForType } from './dataTypes/builtins/dataTypeValidatorByName';
+import validatorsByName, { getValidatorForType } from './dataTypes/builtins/dataTypeValidatorByName';
 import createAtomicValue, { falseBoolean, trueBoolean } from './dataTypes/createAtomicValue';
 import createPointerValue from './dataTypes/createPointerValue';
 import ISequence from './dataTypes/ISequence';
@@ -18,7 +21,7 @@ import createDoublyIterableSequence from './util/createDoublyIterableSequence';
  * @return Null if the value is absent and the empty sequence should be
  * output instead
  */
-function adaptItemToXPathValue(value: any, domFacade: DomFacade): Value | null {
+function adaptSingleJavaScriptValue(value: ValidValue, domFacade: DomFacade): Value | null {
 	if (value === null) {
 		return null;
 	}
@@ -32,8 +35,8 @@ function adaptItemToXPathValue(value: any, domFacade: DomFacade): Value | null {
 			return createAtomicValue(value, 'xs:string');
 		case 'object':
 			// Test if it is a node
-			if (value.nodeType) {
-				const pointer: NodePointer = { node: value, graftAncestor: null };
+			if ('nodeType' in value) {
+				const pointer: NodePointer = { node: value as ConcreteNode, graftAncestor: null };
 				return createPointerValue(pointer, domFacade);
 			}
 			if (Array.isArray(value)) {
@@ -42,7 +45,7 @@ function adaptItemToXPathValue(value: any, domFacade: DomFacade): Value | null {
 						if (arrayItem === undefined) {
 							return () => sequenceFactory.empty();
 						}
-						const adaptedValue = adaptItemToXPathValue(arrayItem, domFacade);
+						const adaptedValue = adaptSingleJavaScriptValue(arrayItem, domFacade);
 						const adaptedSequence =
 							adaptedValue === null
 								? sequenceFactory.empty()
@@ -57,7 +60,7 @@ function adaptItemToXPathValue(value: any, domFacade: DomFacade): Value | null {
 				Object.keys(value)
 					.filter((key) => value[key] !== undefined)
 					.map((key) => {
-						const adaptedValue = adaptItemToXPathValue(value[key], domFacade);
+						const adaptedValue = adaptSingleJavaScriptValue(value[key], domFacade);
 						const adaptedSequence =
 							adaptedValue === null
 								? sequenceFactory.empty()
@@ -75,7 +78,7 @@ function adaptItemToXPathValue(value: any, domFacade: DomFacade): Value | null {
 
 // TODO REWRITE ALL ANY IN THIS FILE TO THE NEW VALID TYPE STUFF
 
-function checkNumericType(value: any, type: ValueType) {
+function checkNumericType(value: any, type: ValueType): value is number {
 	if (typeof value === 'number') {
 		return;
 	}
@@ -94,7 +97,7 @@ function checkNumericType(value: any, type: ValueType) {
  * @param  value
  * @return Null if the value is absent and the empty sequence should be outputted instead
  */
-function adaptJavaScriptValueToXPath(type: ValueType, value: any, domFacade: DomFacade): Value | null {
+function adaptJavaScriptValueToXPath(type: ValueType, value: ValidValueSequence, domFacade: DomFacade): Value | null {
 	if (value === null) {
 		return null;
 	}
@@ -112,7 +115,7 @@ function adaptJavaScriptValueToXPath(type: ValueType, value: any, domFacade: Dom
 			return createAtomicValue(+value, 'xs:decimal');
 		case 'xs:integer':
 			checkNumericType(value, type);
-			return createAtomicValue(value | 0, 'xs:integer');
+			return createAtomicValue(value as number | 0, 'xs:integer');
 		case 'xs:float':
 			checkNumericType(value, type);
 			return createAtomicValue(+value, 'xs:float');
@@ -124,6 +127,9 @@ function adaptJavaScriptValueToXPath(type: ValueType, value: any, domFacade: Dom
 		case 'xs:gMonthDay':
 		case 'xs:gMonth':
 		case 'xs:gDay':
+			if (!(value instanceof Date)) {
+				throw new Error(`The JavaScript value ${value} with type ${typeof value} is not a valid type to be converted to an XPath ${type}.`);
+			}
 			return createAtomicValue(
 				DateTime.fromString(value.toISOString()).convertToType(type),
 				type
@@ -133,10 +139,13 @@ function adaptJavaScriptValueToXPath(type: ValueType, value: any, domFacade: Dom
 		case 'text()':
 		case 'processing-instruction()':
 		case 'comment()':
-			const pointer: NodePointer = { node: value, graftAncestor: null };
+			if (!(typeof value === 'object') || !('nodeType' in value)) {
+				throw new Error(`The JavaScript value ${value} with type ${typeof value} is not a valid type to be converted to an XPath ${type}.`);
+			}
+			const pointer: NodePointer = { node: value as ConcreteNode, graftAncestor: null };
 			return createPointerValue(pointer, domFacade);
 		case 'item()':
-			return adaptItemToXPathValue(value, domFacade);
+			return adaptSingleJavaScriptValue(value, domFacade);
 		default:
 			throw new Error(
 				`Values of the type "${type}" can not be adapted to equivalent XPath values.`
@@ -144,41 +153,44 @@ function adaptJavaScriptValueToXPath(type: ValueType, value: any, domFacade: Dom
 	}
 }
 
-export default function adaptJavaScriptValueToXPathValue(
-	domFacade: DomFacade,
-	value: any,
-	expectedType?: string | undefined
-): ISequence {
-	expectedType = expectedType || 'item()?';
-
+export function adaptJavaScriptValueToArrayOfXPathValues(domFacade: DomFacade, value: ValidValueSequence, expectedType: string): Value[] {
 	const parts = expectedType.match(/^([^+?*]*)([\+\*\?])?$/);
 	const type = parts[1] as ValueType;
 	const multiplicity = parts[2];
 
 	switch (multiplicity) {
 		case '?': {
-			const adaptedValue = adaptJavaScriptValueToXPath(type, value, domFacade);
-			if (adaptedValue === null) {
-				return sequenceFactory.empty();
-			}
-			return sequenceFactory.singleton(adaptedValue);
+			const converted = adaptJavaScriptValueToXPath(type, value, domFacade);
+			return converted === null ? [] : [converted];
 		}
 		case '+':
 		case '*': {
-			const convertedValues = value.map((val) =>
+			if (!Array.isArray(value)) {
+				throw new Error(`The JavaScript value ${value} should be an array if it is to be converted to ${expectedType}.`);
+			}
+			return value.map((val) =>
 				adaptJavaScriptValueToXPath(type, val, domFacade)
-			);
-			return sequenceFactory.create(
-				convertedValues.filter((convertedValue) => convertedValue !== null)
-			);
+			// tslint:disable-next-line: no-shadowed-variable
+			).filter((value: Value|null)=>value!== null);
 		}
 
 		default: {
 			const adaptedValue = adaptJavaScriptValueToXPath(type, value, domFacade);
 			if (adaptedValue === null) {
-				return sequenceFactory.empty();
+				return [];
 			}
-			return sequenceFactory.singleton(adaptedValue);
+			return [adaptedValue];
 		}
 	}
+}
+
+/**
+ * Create a sequence from JavaScript objects
+ *
+ * @param  domFacade     The DomFacade to use when creating a NodeValue
+ * @param  value         The value to convert. This can be null when the type is zero-or-one (?). Can be a single value when the value is exactly one, must be an array otherwise.
+ * @param  expectedType  The type to convert _to_
+ */
+export function adaptJavaScriptValueToSequence(domFacade: DomFacade, value: ValidValueSequence, expectedType: string = 'item()?'): ISequence {
+	return sequenceFactory.create(adaptJavaScriptValueToArrayOfXPathValues(domFacade, value, expectedType));
 }

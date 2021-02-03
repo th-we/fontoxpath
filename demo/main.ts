@@ -1,4 +1,5 @@
 import * as fontoxpath from '../src/index';
+import { IDomFacade } from '../src/index';
 
 const allowXQuery = document.getElementById('allowXQuery') as HTMLInputElement;
 const allowXQueryUpdateFacility = document.getElementById(
@@ -13,6 +14,15 @@ const updateResult = document.getElementById('updateResult');
 const xmlSource = document.getElementById('xmlSource');
 const xpathField = document.getElementById('xpathField');
 const traceOutput = document.getElementById('traceOutput');
+
+fontoxpath.registerCustomXPathFunction(
+	{ localName: 'bob', namespaceURI: 'steve' },
+	['array(*)'],
+	'item()?',
+	(domFacade, arr) => {
+		return [12, 21, 321, 321];
+	}
+);
 
 const domParser = new DOMParser();
 
@@ -176,8 +186,27 @@ async function runUpdatingXQuery(script: string) {
 }
 
 async function runNormalXPath(script: string, asXQuery: boolean) {
+	// let testValue = 12;
+
+	// debugger;
+
+	const fact = fontoxpath.createTypedValueFactory('xs:integer');
+	const testValue = fact(123, xmlDoc as unknown as IDomFacade);
+
+
+
+	// const res = fontoxpath.evaluateXPath(`$testValue instance of xs:string or
+	// $testValue instance of xs:numeric or
+	// $testValue instance of xs:boolean`, xmlDoc, null, {
+	// 	testValue
+	// }, fontoxpath.ReturnType.BOOLEAN, {
+	// 	debug: true
+	// });
+
+
+
 	const raw = [];
-	const it = fontoxpath.evaluateXPathToAsyncIterator(script, xmlDoc, null, null, {
+	const it = fontoxpath.evaluateXPathToAsyncIterator(script, xmlDoc, null, {testValue }, {
 		debug: true,
 		disableCache: true,
 		language: asXQuery

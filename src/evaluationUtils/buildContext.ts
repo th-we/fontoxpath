@@ -5,7 +5,8 @@ import DomFacade from '../domFacade/DomFacade';
 import ExternalDomFacade from '../domFacade/ExternalDomFacade';
 import IDomFacade from '../domFacade/IDomFacade';
 import { Options } from '../evaluateXPath';
-import adaptJavaScriptValueToXPathValue from '../expressions/adaptJavaScriptValueToXPathValue';
+import { adaptJavaScriptValueToSequence } from '../expressions/adaptJavaScriptValueToXPathValue';
+import ISequence from '../expressions/dataTypes/ISequence';
 import sequenceFactory from '../expressions/dataTypes/sequenceFactory';
 import DynamicContext from '../expressions/DynamicContext';
 import ExecutionParameters from '../expressions/ExecutionParameters';
@@ -17,7 +18,11 @@ import DomBackedNodesFactory from '../nodesFactory/DomBackedNodesFactory';
 import INodesFactory from '../nodesFactory/INodesFactory';
 import wrapExternalNodesFactory from '../nodesFactory/wrapExternalNodesFactory';
 import staticallyCompileXPath from '../parsing/staticallyCompileXPath';
-import { IS_XPATH_VALUE_SYMBOL, TypedExternalValue, ValidValueSequence } from '../types/TypedValueFactory';
+import {
+	IS_XPATH_VALUE_SYMBOL,
+	TypedExternalValue,
+	ValidValueSequence,
+} from '../types/TypedValueFactory';
 import { Node } from '../types/Types';
 
 const generateGlobalVariableBindingName = (variableName: string) => `Q{}${variableName}[0]`;
@@ -49,7 +54,7 @@ export default function buildEvaluationContext(
 	expressionString: string,
 	contextItem: any,
 	domFacade: IDomFacade | null,
-	variables: {[s:string]:TypedExternalValue|ValidValueSequence},
+	variables: { [s: string]: TypedExternalValue | ValidValueSequence },
 	externalOptions: Options,
 	compilationOptions: {
 		allowUpdating: boolean;
@@ -109,7 +114,7 @@ export default function buildEvaluationContext(
 	);
 
 	const contextSequence = contextItem
-		? adaptJavaScriptValueToXPathValue(wrappedDomFacade, contextItem)
+		? adaptJavaScriptValueToSequence(wrappedDomFacade, contextItem)
 		: sequenceFactory.empty();
 
 	const nodesFactory: INodesFactory =
@@ -121,19 +126,28 @@ export default function buildEvaluationContext(
 		? wrapExternalDocumentWriter(internalOptions.documentWriter)
 		: domBackedDocumentWriter;
 
-	const variableBindings = Object.keys(variables).reduce((typedVariableByName, variableName) => {
-		typedVariableByName[generateGlobalVariableBindingName(variableName)] = () => {
+	const variableBindings: { [s: string]: () => ISequence } = Object.keys(variables).reduce(
+		(typedVariableByName, variableName) => {
 			const variable = variables[variableName];
 			if (typeof variable === 'object' && IS_XPATH_VALUE_SYMBOL in variable) {
 				// If this symbol is present, the value has already undergone type conversion.
 				const castedObject = variable as TypedExternalValue;
-				return castedObject.convertedValue;
+				typedVariableByName[generateGlobalVariableBindingName(variableName)] = () => {
+					return sequenceFactory.create(castedObject.convertedValue);
+				};
+			} else {
+				typedVariableByName[generateGlobalVariableBindingName(variableName)] = () => {
+					// The value is not converted yet. Do it just in time.
+					return adaptJavaScriptValueToSequence(
+						wrappedDomFacade,
+						variables[variableName]
+					);
+				};
 			}
-			// The value is not converted yet. Do it just in time.
-			return adaptJavaScriptValueToXPathValue(wrappedDomFacade, variables[variableName]);
-		};
-		return typedVariableByName;
-	}, Object.create(null));
+			return typedVariableByName;
+		},
+		Object.create(null) as { [s: string]: () => ISequence }
+	);
 
 	let dynamicContext;
 	for (const binding of expressionAndStaticContext.staticContext.getVariableBindings()) {

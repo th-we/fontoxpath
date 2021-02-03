@@ -1,5 +1,5 @@
 import IDomFacade from './domFacade/IDomFacade';
-import adaptJavaScriptValueToXPathValue from './expressions/adaptJavaScriptValueToXPathValue';
+import {adaptJavaScriptValueToSequence} from './expressions/adaptJavaScriptValueToXPathValue';
 import ISequence from './expressions/dataTypes/ISequence';
 import isSubtypeOf from './expressions/dataTypes/isSubtypeOf';
 import DynamicContext from './expressions/DynamicContext';
@@ -138,7 +138,7 @@ export default function registerCustomXPathFunction(
 		}
 
 		// The value is not converted yet. Do it just in time.
-		const xpathResult = adaptJavaScriptValueToXPathValue(
+		const xpathResult = adaptJavaScriptValueToSequence(
 			executionParameters.domFacade,
 			jsResult,
 			returnType

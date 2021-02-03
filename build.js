@@ -64,8 +64,6 @@ function outputDeclarations() {
 	const apiExtractorConfig = ExtractorConfig.loadFileAndPrepare('./api-extractor.json');
 	const extractorResult = Extractor.invoke(apiExtractorConfig, {});
 	if (!extractorResult.succeeded) {
-		debugger;
-		console.log(extractorResult);
 		throw new Error('Typing extraction failed');
 	}
 	console.log('Typings generated');
@@ -146,7 +144,7 @@ export default fontoxpath;
 
 let chain = Promise.resolve();
 if (!skipParserBuild) {
-//	chain = chain.then(doPegJsBuild);
+	// chain = chain.then(doPegJsBuild);
 }
 
 if (!skipClosureBuild) {
