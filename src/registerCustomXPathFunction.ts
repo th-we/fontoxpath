@@ -12,6 +12,7 @@ import {
 import { IterationHint } from './expressions/util/iterators';
 import { errXQST0060 } from './expressions/xquery/XQueryErrors';
 import transformXPathItemToJavascriptObject from './transformXPathItemToJavascriptObject';
+import { IS_XPATH_VALUE_SYMBOL, TypedExternalValue } from './types/TypedValueFactory';
 
 type DynamicContextAdapter = {
 	currentContext: any;
@@ -129,6 +130,14 @@ export default function registerCustomXPathFunction(
 		};
 
 		const jsResult = callback.apply(undefined, [dynamicContextAdapter, ...newArguments]);
+
+		if (typeof jsResult === 'object' && IS_XPATH_VALUE_SYMBOL in jsResult) {
+			// If this symbol is present, the value has already undergone type conversion.
+			const castedObject = jsResult as TypedExternalValue;
+			return castedObject.convertedValue;
+		}
+
+		// The value is not converted yet. Do it just in time.
 		const xpathResult = adaptJavaScriptValueToXPathValue(
 			executionParameters.domFacade,
 			jsResult,

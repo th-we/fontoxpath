@@ -31,6 +31,7 @@ import { Profiler, profiler, XPathPerformanceMeasurement } from './performance';
 import precompileXPath from './precompileXPath';
 import registerCustomXPathFunction from './registerCustomXPathFunction';
 import registerXQueryModule from './registerXQueryModule';
+import createTypedValueFactory, { TypedExternalValue, ValidValue, ValidValueSequence } from './types/TypedValueFactory';
 import {
 	Attr,
 	CDATASection,
@@ -129,8 +130,13 @@ if (typeof fontoxpathGlobal !== 'undefined') {
 	fontoxpathGlobal['registerCustomXPathFunction'] = registerCustomXPathFunction;
 	fontoxpathGlobal['parseScript'] = parseScript;
 	fontoxpathGlobal['profiler'] = profiler;
+	fontoxpathGlobal['createTypedValueFactory'] = createTypedValueFactory;
 }
-
+/**
+const stringValueFactory = createTypedValueFactory('xs:string');
+const nodesValueFactory = createTypedValueFactory('node()*');
+const typedNodes = nodesValueFactory([currentNode, nextNode], domFacade);
+*/
 export {
 	Attr,
 	CDATASection,
@@ -177,4 +183,8 @@ export {
 	Profiler,
 	profiler,
 	XPathPerformanceMeasurement,
+	createTypedValueFactory,
+	TypedExternalValue,
+	ValidValue,
+	ValidValueSequence
 };

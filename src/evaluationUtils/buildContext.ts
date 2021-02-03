@@ -17,6 +17,7 @@ import DomBackedNodesFactory from '../nodesFactory/DomBackedNodesFactory';
 import INodesFactory from '../nodesFactory/INodesFactory';
 import wrapExternalNodesFactory from '../nodesFactory/wrapExternalNodesFactory';
 import staticallyCompileXPath from '../parsing/staticallyCompileXPath';
+import { IS_XPATH_VALUE_SYMBOL, TypedExternalValue, ValidValueSequence } from '../types/TypedValueFactory';
 import { Node } from '../types/Types';
 
 const generateGlobalVariableBindingName = (variableName: string) => `Q{}${variableName}[0]`;
@@ -48,7 +49,7 @@ export default function buildEvaluationContext(
 	expressionString: string,
 	contextItem: any,
 	domFacade: IDomFacade | null,
-	variables: object,
+	variables: {[s:string]:TypedExternalValue|ValidValueSequence},
 	externalOptions: Options,
 	compilationOptions: {
 		allowUpdating: boolean;
@@ -121,8 +122,16 @@ export default function buildEvaluationContext(
 		: domBackedDocumentWriter;
 
 	const variableBindings = Object.keys(variables).reduce((typedVariableByName, variableName) => {
-		typedVariableByName[generateGlobalVariableBindingName(variableName)] = () =>
-			adaptJavaScriptValueToXPathValue(wrappedDomFacade, variables[variableName]);
+		typedVariableByName[generateGlobalVariableBindingName(variableName)] = () => {
+			const variable = variables[variableName];
+			if (typeof variable === 'object' && IS_XPATH_VALUE_SYMBOL in variable) {
+				// If this symbol is present, the value has already undergone type conversion.
+				const castedObject = variable as TypedExternalValue;
+				return castedObject.convertedValue;
+			}
+			// The value is not converted yet. Do it just in time.
+			return adaptJavaScriptValueToXPathValue(wrappedDomFacade, variables[variableName]);
+		};
 		return typedVariableByName;
 	}, Object.create(null));
 

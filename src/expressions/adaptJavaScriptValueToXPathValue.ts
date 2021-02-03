@@ -1,12 +1,13 @@
 import { NodePointer } from '../domClone/Pointer';
 import DomFacade from '../domFacade/DomFacade';
 import ArrayValue from './dataTypes/ArrayValue';
+import dataTypeValidatorByName, { getValidatorForType } from './dataTypes/builtins/dataTypeValidatorByName';
 import createAtomicValue, { falseBoolean, trueBoolean } from './dataTypes/createAtomicValue';
 import createPointerValue from './dataTypes/createPointerValue';
 import ISequence from './dataTypes/ISequence';
 import MapValue from './dataTypes/MapValue';
 import sequenceFactory from './dataTypes/sequenceFactory';
-import Value from './dataTypes/Value';
+import Value, { ValueType } from './dataTypes/Value';
 import DateTime from './dataTypes/valueTypes/DateTime';
 import createDoublyIterableSequence from './util/createDoublyIterableSequence';
 
@@ -72,13 +73,28 @@ function adaptItemToXPathValue(value: any, domFacade: DomFacade): Value | null {
 	throw new Error(`Value ${value} of type "${typeof value}" is not adaptable to an XPath value.`);
 }
 
+// TODO REWRITE ALL ANY IN THIS FILE TO THE NEW VALID TYPE STUFF
+
+function checkNumericType(value: any, type: ValueType) {
+	if (typeof value === 'number') {
+		return;
+	}
+	if (typeof value === 'string') {
+		const validator = getValidatorForType(type);
+		if (validator(value)) {
+			return;
+		}
+	}
+	throw new Error(`Cannot convert JavaScript value '${value}' to  the XPath type ${type} since it is not valid.`);
+}
+
 /**
  * Adapt a JavaScript value to the equivalent in XPath. This tries to keep the preferred type
  *
  * @param  value
  * @return Null if the value is absent and the empty sequence should be outputted instead
  */
-function adaptJavaScriptValueToXPath(type, value: any, domFacade: DomFacade): Value | null {
+function adaptJavaScriptValueToXPath(type: ValueType, value: any, domFacade: DomFacade): Value | null {
 	if (value === null) {
 		return null;
 	}
@@ -89,12 +105,16 @@ function adaptJavaScriptValueToXPath(type, value: any, domFacade: DomFacade): Va
 			return createAtomicValue(value + '', 'xs:string');
 		case 'xs:double':
 		case 'xs:numeric':
+			checkNumericType(value, type);
 			return createAtomicValue(+value, 'xs:double');
 		case 'xs:decimal':
+			checkNumericType(value, type);
 			return createAtomicValue(+value, 'xs:decimal');
 		case 'xs:integer':
+			checkNumericType(value, type);
 			return createAtomicValue(value | 0, 'xs:integer');
 		case 'xs:float':
+			checkNumericType(value, type);
 			return createAtomicValue(+value, 'xs:float');
 		case 'xs:date':
 		case 'xs:time':
@@ -110,7 +130,8 @@ function adaptJavaScriptValueToXPath(type, value: any, domFacade: DomFacade): Va
 			);
 		case 'node()':
 		case 'element()':
-		case 'text':
+		case 'text()':
+		case 'processing-instruction()':
 		case 'comment()':
 			const pointer: NodePointer = { node: value, graftAncestor: null };
 			return createPointerValue(pointer, domFacade);
@@ -131,7 +152,7 @@ export default function adaptJavaScriptValueToXPathValue(
 	expectedType = expectedType || 'item()?';
 
 	const parts = expectedType.match(/^([^+?*]*)([\+\*\?])?$/);
-	const type = parts[1];
+	const type = parts[1] as ValueType;
 	const multiplicity = parts[2];
 
 	switch (multiplicity) {
